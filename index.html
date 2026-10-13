@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="이름과 점수만 넣으면 볼링 내기 금액과 송금 목록을 계산해 주는 페이지">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%B3%3C/text%3E%3C/svg%3E">
+<title>볼링 내기 정산</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: 상단 설정 바 → 점수표(가로 스크롤) → 정산 요약/송금 목록 2열 */
+:root {
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --ink: #18202e;
+  --muted: #5d6779;
+  --line: #d6dce7;
+  --lane: #c98a3d;        /* 레인 원목색 강조 */
+  --lane-soft: #f6e7d2;
+  --win: #1f7a52;
+  --win-soft: #e2f3ea;
+  --lose: #b8383b;
+  --lose-soft: #f8e3e3;
+  --absent: #f3f5f9;
+  --tie: #8a5a00;
+  --tie-soft: #fdf1cf;
+  --font-display: "Black Han Sans", "Apple SD Gothic Neo", sans-serif;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11151d; --surface: #1a202b; --ink: #e8ecf3; --muted: #9aa4b5; --line: #2d3545;
+    --lane: #e0a65c; --lane-soft: #3a2c1a; --win: #5cc893; --win-soft: #16301f;
+    --lose: #f0797b; --lose-soft: #3a1c1e; --absent: #151a23; --tie: #f2c25c; --tie-soft: #33280f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11151d; --surface: #1a202b; --ink: #e8ecf3; --muted: #9aa4b5; --line: #2d3545;
+  --lane: #e0a65c; --lane-soft: #3a2c1a; --win: #5cc893; --win-soft: #16301f;
+  --lose: #f0797b; --lose-soft: #3a1c1e; --absent: #151a23; --tie: #f2c25c; --tie-soft: #33280f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 22px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(30px, 6vw, 44px); line-height: 1; margin: 0; letter-spacing: .01em; }
+h1 span { color: var(--lane); }
+.sub { color: var(--muted); margin: 6px 0 0; font-size: 14px; }
+h2 { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+
+.settings { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+.field { display: grid; gap: 5px; }
+.field label { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); }
+.stepper button { width: 36px; height: 38px; border: 0; background: transparent; color: var(--ink); font-size: 18px; cursor: pointer; }
+.stepper button:hover { background: var(--lane-soft); }
+.stepper input { width: 52px; height: 38px; border: 0; border-inline: 1px solid var(--line); text-align: center; font-family: var(--font-num); font-size: 16px; background: var(--surface); color: var(--ink); }
+.money { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding-right: 10px; }
+.money input { width: 100px; height: 38px; border: 0; background: transparent; padding-left: 10px; font-family: var(--font-num); font-size: 16px; color: var(--ink); text-align: right; }
+.money span { color: var(--muted); padding-left: 4px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 999px; padding: 4px 10px; font-size: 13px; cursor: pointer; font-family: var(--font-num); }
+.chip:hover { border-color: var(--lane); }
+select { height: 38px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 0 10px; font-family: var(--font-body); font-size: 14px; }
+.check { display: inline-flex; align-items: center; gap: 8px; height: 38px; font-size: 14px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--lane); }
+thead th.practice { background: var(--absent); color: var(--muted); }
+thead th.practice small { display: block; font-family: var(--font-body); font-weight: 500; font-size: 10.5px; }
+td.score.practice input { color: var(--muted); }
+.rule-desc { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--muted); }
+.actions { margin-left: auto; display: flex; gap: 8px; }
+.btn { height: 38px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-family: var(--font-body); font-size: 14px; cursor: pointer; }
+.btn:hover { border-color: var(--lane); }
+.btn.danger { color: var(--lose); }
+.btn.confirm { background: var(--lose); border-color: var(--lose); color: var(--surface); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--lane); outline-offset: 1px; }
+
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-variant-numeric: tabular-nums; }
+th, td { border-bottom: 1px solid var(--line); padding: 0; text-align: center; }
+thead th { background: var(--lane-soft); font-size: 12px; font-weight: 700; color: var(--ink); padding: 9px 4px; letter-spacing: .03em; }
+thead th.game { font-family: var(--font-num); }
+th.name-col, td.name-col { text-align: left; position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 120px; }
+thead th.name-col { background: var(--lane-soft); padding-left: 14px; }
+td.name-col input { width: 100%; height: 42px; border: 0; padding: 0 12px; background: transparent; color: var(--ink); font-family: var(--font-body); font-size: 15px; font-weight: 500; }
+td.score input { width: 100%; min-width: 52px; height: 42px; border: 0; border-left: 1px solid var(--line); text-align: center; background: transparent; color: var(--ink); font-family: var(--font-num); font-size: 15px; }
+td.score input:placeholder-shown { background: var(--absent); }
+td.score.top input { color: var(--win); font-weight: 600; }
+td.score.bottom input { color: var(--lose); font-weight: 600; }
+td.score input::-webkit-outer-spin-button, td.score input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+td.score input[type=number] { -moz-appearance: textfield; }
+td.stat { font-family: var(--font-num); font-size: 14px; padding: 0 10px; border-left: 1px solid var(--line); white-space: nowrap; }
+td.total { font-weight: 600; min-width: 96px; }
+td.total.pos { color: var(--win); background: var(--win-soft); }
+td.total.neg { color: var(--lose); background: var(--lose-soft); }
+tfoot td { font-family: var(--font-num); font-size: 12px; color: var(--muted); padding: 8px 4px; border-bottom: 0; }
+tfoot td.name-col { padding-left: 14px; font-family: var(--font-body); }
+.hint { font-size: 12.5px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--line); margin: 0; }
+
+.result { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 22px; }
+@media (max-width: 760px) { .result { grid-template-columns: 1fr; } .actions { margin-left: 0; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.rank-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rank-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.rank-list .pos { font-family: var(--font-num); color: var(--muted); font-size: 13px; }
+.rank-list .who { min-width: 0; }
+.rank-list .who b { font-weight: 500; }
+.bar { height: 6px; border-radius: 3px; margin-top: 4px; background: var(--line); position: relative; overflow: hidden; }
+.bar i { position: absolute; top: 0; bottom: 0; }
+.bar i.pos { left: 50%; background: var(--win); }
+.bar i.neg { right: 50%; background: var(--lose); }
+.amt { font-family: var(--font-num); font-weight: 600; font-size: 15px; }
+.amt.pos { color: var(--win); } .amt.neg { color: var(--lose); } .amt.zero { color: var(--muted); }
+.transfers { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.transfers li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; border-radius: 8px; background: var(--bg); }
+.transfers .arrow { color: var(--lane); font-weight: 700; }
+.transfers .amt { margin-left: auto; }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+.copy-row { display: flex; justify-content: flex-end; margin-top: 12px; }
+td.adj { border-left: 1px solid var(--line); padding: 0 4px; }
+.adj-ctl { display: inline-flex; align-items: center; gap: 2px; }
+.adj-ctl button { width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1; cursor: pointer; }
+.adj-ctl button:hover { border-color: var(--lane); }
+.adj-ctl span { min-width: 70px; text-align: center; font-family: var(--font-num); font-size: 13px; color: var(--muted); }
+.adj-ctl span.pos { color: var(--win); font-weight: 600; } .adj-ctl span.neg { color: var(--lose); font-weight: 600; }
+td.score.tie input { background: var(--tie-soft); color: var(--tie); font-weight: 600; }
+.ties { border-top: 1px solid var(--line); padding: 12px 14px; background: var(--tie-soft); display: grid; gap: 8px; }
+.ties h2 { margin: 0; color: var(--tie); }
+.ties ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ties li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 14px; }
+.ties .tg { font-family: var(--font-num); font-weight: 600; color: var(--tie); }
+.ties .th { color: var(--muted); font-size: 12.5px; }
+.ties p { margin: 0; font-size: 13px; color: var(--ink); }
+.board-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--line); }
+.board-bar h2 { margin: 0; }
+.btn.primary { background: var(--lane); border-color: var(--lane); color: var(--surface); font-weight: 700; }
+.modal { position: fixed; inset: 0; background: rgba(10, 14, 22, .55); display: grid; place-items: center; padding: 16px; z-index: 10; }
+.modal-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; width: min(920px, 100%); max-height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; padding: 16px; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.modal-head h2 { margin: 0; }
+.cap-preview { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-height: 0; }
+.cap-preview img { display: block; max-width: none; width: 100%; min-width: 560px; }
+.modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+.cap-msg { margin-right: auto; font-size: 13px; color: var(--muted); }
+.toast { font-size: 13px; color: var(--win); margin-right: 10px; align-self: center; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>볼링 내기 <span>정산</span></h1>
+      <p class="sub">이름과 점수만 넣으면 게임마다 순위를 매겨 누가 얼마를 주고받는지 계산해요.</p>
+    </div>
+  </header>
+
+  <section class="settings" aria-label="설정">
+    <div class="field">
+      <label for="players">인원</label>
+      <div class="stepper">
+        <button type="button" id="playersMinus" aria-label="인원 줄이기">−</button>
+        <input id="players" type="number" min="2" max="30" value="8">
+        <button type="button" id="playersPlus" aria-label="인원 늘리기">+</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="games">게임 수</label>
+      <div class="stepper">
+        <button type="button" id="gamesMinus" aria-label="게임 수 줄이기">−</button>
+        <input id="games" type="number" min="1" max="20" value="10">
+        <button type="button" id="gamesPlus" aria-label="게임 수 늘리기">+</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="amount">게임당 금액</label>
+      <div class="money"><input id="amount" type="number" min="0" step="500" value="2000"><span>원</span></div>
+    </div>
+    <div class="field">
+      <label>빠른 선택</label>
+      <div class="chips" id="amountChips">
+        <button type="button" class="chip" data-v="1000">1,000</button>
+        <button type="button" class="chip" data-v="2000">2,000</button>
+        <button type="button" class="chip" data-v="3000">3,000</button>
+        <button type="button" class="chip" data-v="5000">5,000</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="rule">정산 방식</label>
+      <select id="rule">
+        <option value="half">상위 절반 vs 하위 절반</option>
+        <option value="versus">전원 1:1 맞대결</option>
+        <option value="last">꼴찌가 1등에게</option>
+        <option value="rank">순위별 차등 (1등↔꼴찌 짝)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="skipFirst">첫 게임</label>
+      <label class="check"><input id="skipFirst" type="checkbox" checked> 음료수 게임 (정산 제외)</label>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="clearScores">점수 비우기</button>
+      <button type="button" class="btn danger" id="resetAll">전체 초기화</button>
+    </div>
+    <p class="rule-desc" id="ruleDesc"></p>
+  </section>
+
+  <section class="board" aria-label="점수표">
+    <div class="board-bar">
+      <h2>점수표</h2>
+      <button type="button" class="btn" id="captureBtn">점수표 캡처</button>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+        <tfoot id="tfoot"></tfoot>
+      </table>
+    </div>
+    <p class="hint">빈칸은 그 게임에 참가하지 않은 걸로 처리돼요. 금액이 갈리는 자리에서 동점이 나오면 둘 다 0원으로 두고 노란색으로 표시해요. 다음 판 초구로 정한 뒤 <b>보정</b> 칸의 +/− 버튼을 누르면 게임당 금액만큼 정산에 더하거나 빼요.</p>
+    <div class="ties" id="tieList" hidden></div>
+  </section>
+
+  <section class="result">
+    <div class="panel">
+      <h2>최종 정산</h2>
+      <ol class="rank-list" id="rankList"></ol>
+    </div>
+    <div class="panel">
+      <h2>송금 정리</h2>
+      <ul class="transfers" id="transfers"></ul>
+      <div class="copy-row"><span class="toast" id="toast" hidden>복사했어요</span><button type="button" class="btn" id="copyBtn">결과 텍스트 복사</button></div>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="capModal" hidden role="dialog" aria-modal="true" aria-labelledby="capTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 id="capTitle">점수표 캡처</h2>
+      <button type="button" class="btn" id="capClose" aria-label="닫기">닫기</button>
+    </div>
+    <div class="cap-preview"><img id="capImg" alt="이름과 점수 캡처 이미지"></div>
+    <div class="modal-actions">
+      <span class="cap-msg" id="capMsg"></span>
+      <button type="button" class="btn" id="capCopy">이미지 복사</button>
+      <button type="button" class="btn primary" id="capSave">PNG로 저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const KEY = "bowling-bet-v1";
+  const SAMPLE = {
+    players: 8, games: 10, amount: 2000, rule: "half", skipFirst: true,
+    names: ["선수1", "선수2", "선수3", "선수4", "선수5", "선수6", "선수7", "선수8"],
+    scores: [
+      [186,204,127,216,190,178,212],[158,173,161,147,153,168,155],[132,182,160,143,150,136,184],
+      [151,152,184,144,187,212,175],[176,181,134,204,178,"",214],[181,164,157,193,129,169,163],
+      [202,140,158,159,118,100,178],[161,161,160,153,134,"",139]
+    ]
+  };
+  const RULES = {
+    half: "게임마다 점수 순위 상위 절반은 금액을 받고, 하위 절반은 금액을 내요. 인원이 홀수면 가운데 한 명은 0원이에요.",
+    versus: "게임마다 참가자 모두와 1:1로 비교해서, 이긴 사람이 진 사람에게 금액을 받아요. 동점이면 주고받지 않아요.",
+    last: "게임마다 꼴찌가 1등에게 금액을 줘요. 나머지는 0원이에요.",
+    rank: "게임마다 1등↔꼴찌, 2등↔뒤에서 2등처럼 짝을 지어요. 바깥 짝일수록 많이 주고받아요 (1등은 금액×(인원÷2), 그다음은 하나씩 줄어요)."
+  };
+
+  let state = load();
+
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && Array.isArray(s.names)) return s;
+    } catch (e) {}
+    return JSON.parse(JSON.stringify(SAMPLE));
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(Math.round(n)).toLocaleString("ko-KR") + "원";
+  const plain = (n) => Math.abs(Math.round(n)).toLocaleString("ko-KR") + "원";
+  const nameOf = (i) => (state.names[i] || "").trim() || `선수${i + 1}`;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  function normalize() {
+    state.players = clamp(parseInt(state.players) || 2, 2, 30);
+    state.games = clamp(parseInt(state.games) || 1, 1, 20);
+    if (typeof state.skipFirst !== "boolean") state.skipFirst = true;
+    while (state.names.length < state.players) state.names.push("");
+    while (state.scores.length < state.players) state.scores.push([]);
+  }
+
+  function getScore(p, g) {
+    const v = (state.scores[p] || [])[g];
+    if (v === "" || v === undefined || v === null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // 순위 위치별 금액(인원 n, 0 = 1등). 합계 0.
+  function positionPayouts(n, amt, rule) {
+    const out = new Array(n).fill(0);
+    if (n < 2) return out;
+    if (rule === "half") {
+      const h = Math.floor(n / 2);
+      for (let i = 0; i < h; i++) { out[i] = amt; out[n - 1 - i] = -amt; }
+    } else if (rule === "last") {
+      out[0] = amt; out[n - 1] = -amt;
+    } else if (rule === "rank") {
+      const h = Math.floor(n / 2);
+      for (let i = 0; i < h; i++) { out[i] = amt * (h - i); out[n - 1 - i] = -amt * (h - i); }
+    }
+    return out;
+  }
+
+  // 한 게임 결과: {player: 금액}
+  function settleGame(g) {
+    const amt = Number(state.amount) || 0;
+    const entries = [];
+    for (let p = 0; p < state.players; p++) { const s = getScore(p, g); if (s !== null) entries.push({ p, s }); }
+    const res = {};
+    if (entries.length < 2) return { res, entries };
+    if (state.rule === "versus") {
+      entries.forEach((a) => { res[a.p] = 0; });
+      for (let i = 0; i < entries.length; i++)
+        for (let j = i + 1; j < entries.length; j++) {
+          const a = entries[i], b = entries[j];
+          if (a.s > b.s) { res[a.p] += amt; res[b.p] -= amt; }
+          else if (b.s > a.s) { res[b.p] += amt; res[a.p] -= amt; }
+        }
+      return { res, entries };
+    }
+    entries.sort((a, b) => b.s - a.s);
+    const pay = positionPayouts(entries.length, amt, state.rule);
+    const ties = [];
+    let i = 0;
+    while (i < entries.length) {
+      let j = i;
+      while (j + 1 < entries.length && entries[j + 1].s === entries[i].s) j++;
+      // 동점인데 순위마다 금액이 다르면 0원으로 두고 다음 판 초구로 결정
+      let same = true;
+      for (let k = i + 1; k <= j; k++) if (pay[k] !== pay[i]) same = false;
+      for (let k = i; k <= j; k++) res[entries[k].p] = same ? pay[i] : 0;
+      if (!same) ties.push({ g, from: i + 1, to: j + 1, score: entries[i].s, players: entries.slice(i, j + 1).map((e) => e.p) });
+      i = j + 1;
+    }
+    return { res, entries, ties };
+  }
+
+  const isPractice = (g) => g === 0 && state.skipFirst;
+  // 보정은 '게임당 금액 몇 배'로 저장해서 금액을 바꾸면 같이 바뀐다
+  const getAdjUnits = (p) => Number((state.adjUnits || [])[p]) || 0;
+  const getAdj = (p) => getAdjUnits(p) * (Number(state.amount) || 0);
+
+  function compute() {
+    const totals = new Array(state.players).fill(0);
+    const perGame = [], ties = [];
+    for (let g = 0; g < state.games; g++) {
+      const r = isPractice(g) ? { res: {}, entries: [] } : settleGame(g);
+      perGame.push(r);
+      for (const p in r.res) totals[p] += r.res[p];
+      if (r.ties) ties.push(...r.ties);
+    }
+    for (let p = 0; p < state.players; p++) totals[p] += getAdj(p);
+    return { totals, perGame, ties };
+  }
+
+  function transfersFrom(totals) {
+    const cred = [], debt = [];
+    totals.forEach((v, i) => {
+      const r = Math.round(v);
+      if (r > 0) cred.push({ i, v: r }); else if (r < 0) debt.push({ i, v: -r });
+    });
+    cred.sort((a, b) => b.v - a.v); debt.sort((a, b) => b.v - a.v);
+    const out = [];
+    let a = 0, b = 0;
+    while (a < debt.length && b < cred.length) {
+      const x = Math.min(debt[a].v, cred[b].v);
+      out.push({ from: debt[a].i, to: cred[b].i, v: x });
+      debt[a].v -= x; cred[b].v -= x;
+      if (!debt[a].v) a++;
+      if (!cred[b].v) b++;
+    }
+    return out;
+  }
+
+  // ----- 렌더 -----
+  function buildTable() {
+    normalize();
+    let h = '<tr><th class="name-col" scope="col">이름</th>';
+    for (let g = 0; g < state.games; g++)
+      h += isPractice(g) ? `<th class="game practice" scope="col">${g + 1}G<small>음료수</small></th>` : `<th class="game" scope="col">${g + 1}G</th>`;
+    h += '<th scope="col" title="초구 결정 등으로 직접 더하거나 뺄 금액">보정</th><th scope="col">정산</th><th scope="col">평균</th><th scope="col">게임</th></tr>';
+    $("thead").innerHTML = h;
+
+    let b = "";
+    for (let p = 0; p < state.players; p++) {
+      b += `<tr data-p="${p}"><td class="name-col"><input id="name-${p}" type="text" aria-label="${p + 1}번 이름" placeholder="선수${p + 1}" value="${esc(state.names[p] || "")}"></td>`;
+      for (let g = 0; g < state.games; g++) {
+        const v = getScore(p, g);
+        b += `<td class="score" id="cell-${p}-${g}"><input id="s-${p}-${g}" type="number" inputmode="numeric" min="0" max="300" placeholder="–" aria-label="${p + 1}번 ${g + 1}게임 점수" value="${v === null ? "" : v}"></td>`;
+      }
+      b += `<td class="adj"><div class="adj-ctl"><button type="button" id="adjm-${p}" data-p="${p}" data-d="-1" aria-label="${p + 1}번 보정 한 판 빼기">−</button><span id="adjv-${p}" aria-live="polite"></span><button type="button" id="adjp-${p}" data-p="${p}" data-d="1" aria-label="${p + 1}번 보정 한 판 더하기">+</button></div></td><td class="stat total" id="total-${p}"></td><td class="stat" id="avg-${p}"></td><td class="stat" id="cnt-${p}"></td></tr>`;
+    }
+    $("tbody").innerHTML = b;
+
+    let f = '<tr><td class="name-col">게임 평균</td>';
+    for (let g = 0; g < state.games; g++) f += `<td id="gavg-${g}"></td>`;
+    f += '<td></td><td id="sumCheck"></td><td></td><td></td></tr>';
+    $("tfoot").innerHTML = f;
+    update();
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  function update() {
+    const { totals, perGame, ties } = compute();
+    const tieSet = new Set(ties.flatMap((t) => t.players.map((p) => `${p}-${t.g}`)));
+    for (let p = 0; p < state.players; p++) {
+      const t = $("total-" + p);
+      t.textContent = fmt(totals[p]);
+      const a = getAdj(p), av = $("adjv-" + p);
+      av.textContent = a ? fmt(a) : "0";
+      av.className = a > 0 ? "pos" : a < 0 ? "neg" : "";
+      t.className = "stat total " + (Math.round(totals[p]) > 0 ? "pos" : Math.round(totals[p]) < 0 ? "neg" : "");
+      let sum = 0, cnt = 0;
+      for (let g = 0; g < state.games; g++) { const s = getScore(p, g); if (s !== null) { sum += s; cnt++; } }
+      $("avg-" + p).textContent = cnt ? (sum / cnt).toFixed(1) : "–";
+      $("cnt-" + p).textContent = cnt;
+    }
+    for (let g = 0; g < state.games; g++) {
+      const { res } = perGame[g];
+      let sum = 0, n = 0;
+      for (let p = 0; p < state.players; p++) { const s = getScore(p, g); if (s !== null) { sum += s; n++; } }
+      $("gavg-" + g).textContent = n ? (sum / n).toFixed(0) : "";
+      for (let p = 0; p < state.players; p++) {
+        const cell = $(`cell-${p}-${g}`);
+        const r = res[p];
+        const tied = tieSet.has(`${p}-${g}`);
+        cell.className = "score" + (isPractice(g) ? " practice" : tied ? " tie" : r > 0 ? " top" : r < 0 ? " bottom" : "");
+        cell.title = isPractice(g) ? "음료수 게임 (정산 제외)" : tied ? "동점: 다음 판 초구로 결정 (보정 칸 +/− 버튼)" : r === undefined ? "" : `이 게임 ${fmt(r)}`;
+      }
+    }
+    $("tieList").innerHTML = ties.length
+      ? `<h2>초구로 정할 동점 (${ties.length})</h2><ul>` + ties.map((t) =>
+          `<li><span class="tg">${t.g + 1}G</span><span>공동 ${t.from}등 · ${t.score}점</span><b>${t.players.map((p) => esc(nameOf(p))).join(", ")}</b><span class="th">${t.from}~${t.to}등 금액이 0원으로 들어가 있어요</span></li>`).join("") +
+        `</ul><p>다음 판 초구 결과대로 이긴 사람은 보정 칸 <b>+</b>, 진 사람은 <b>−</b>를 누르세요. 한 번에 게임당 금액(${plain(Number(state.amount) || 0)})만큼 움직여요.</p>`
+      : "";
+    $("tieList").hidden = !ties.length;
+    const check = Math.round(totals.reduce((a, b) => a + b, 0));
+    $("sumCheck").textContent = check === 0 ? "합계 0 ✓" : "합계 " + fmt(check);
+
+    // 정산 목록
+    const order = totals.map((v, i) => ({ i, v })).sort((a, b) => b.v - a.v);
+    const maxAbs = Math.max(1, ...totals.map((v) => Math.abs(v)));
+    $("rankList").innerHTML = order.map((o, k) => {
+      const cls = Math.round(o.v) > 0 ? "pos" : Math.round(o.v) < 0 ? "neg" : "zero";
+      const w = (Math.abs(o.v) / maxAbs) * 50;
+      return `<li><span class="pos">${k + 1}</span><div class="who"><b>${esc(nameOf(o.i))}</b><div class="bar"><i class="${cls === "neg" ? "neg" : "pos"}" style="width:${cls === "zero" ? 0 : w}%"></i></div></div><span class="amt ${cls}">${fmt(o.v)}</span></li>`;
+    }).join("");
+
+    const tr = transfersFrom(totals);
+    $("transfers").innerHTML = tr.length
+      ? tr.map((t) => `<li><b>${esc(nameOf(t.from))}</b><span class="arrow">→</span><b>${esc(nameOf(t.to))}</b><span class="amt">${plain(t.v)}</span></li>`).join("")
+      : '<li class="empty">아직 주고받을 금액이 없어요. 점수를 입력해 보세요.</li>';
+    lastText = buildText(order, tr);
+    $("ruleDesc").textContent = RULES[state.rule] + ` (게임당 ${plain(Number(state.amount) || 0)}${state.skipFirst ? ", 1게임은 음료수 게임이라 정산에서 빠져요" : ""})`;
+  }
+
+  let lastText = "";
+  function buildText(order, tr) {
+    const lines = [`🎳 볼링 내기 정산 (게임당 ${plain(Number(state.amount) || 0)})`, ""];
+    order.forEach((o, k) => lines.push(`${k + 1}. ${nameOf(o.i)} ${fmt(o.v)}`));
+    if (tr.length) { lines.push("", "[송금]"); tr.forEach((t) => lines.push(`${nameOf(t.from)} → ${nameOf(t.to)} ${plain(t.v)}`)); }
+    return lines.join("\n");
+  }
+
+  // ----- 이벤트 -----
+  function setCount(key, v) { state[key] = v; normalize(); $(key).value = state[key]; save(); buildTable(); }
+  $("playersMinus").onclick = () => setCount("players", state.players - 1);
+  $("playersPlus").onclick = () => setCount("players", state.players + 1);
+  $("gamesMinus").onclick = () => setCount("games", state.games - 1);
+  $("gamesPlus").onclick = () => setCount("games", state.games + 1);
+  $("players").addEventListener("change", (e) => setCount("players", parseInt(e.target.value)));
+  $("games").addEventListener("change", (e) => setCount("games", parseInt(e.target.value)));
+  $("amount").addEventListener("input", (e) => { state.amount = Math.max(0, Number(e.target.value) || 0); save(); update(); });
+  $("amountChips").addEventListener("click", (e) => {
+    const v = e.target.dataset && e.target.dataset.v;
+    if (!v) return;
+    state.amount = Number(v); $("amount").value = v; save(); update();
+  });
+  $("rule").addEventListener("change", (e) => { state.rule = e.target.value; save(); update(); });
+  $("skipFirst").addEventListener("change", (e) => { state.skipFirst = e.target.checked; save(); buildTable(); });
+
+  $("tbody").addEventListener("input", (e) => {
+    const id = e.target.id;
+    if (id.startsWith("name-")) { state.names[+id.slice(5)] = e.target.value; }
+    else if (id.startsWith("s-")) {
+      const [, p, g] = id.split("-").map(Number);
+      let v = e.target.value;
+      if (v !== "") { v = clamp(Math.round(Number(v)), 0, 300); }
+      state.scores[p] = state.scores[p] || [];
+      state.scores[p][g] = v;
+    }
+    save(); update();
+  });
+  $("tbody").addEventListener("change", (e) => {
+    if (e.target.id.startsWith("s-")) { const [, p, g] = e.target.id.split("-").map(Number); const v = getScore(p, g); e.target.value = v === null ? "" : v; }
+  });
+  $("tbody").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-d]");
+    if (!btn) return;
+    const p = +btn.dataset.p;
+    state.adjUnits = state.adjUnits || [];
+    state.adjUnits[p] = getAdjUnits(p) + Number(btn.dataset.d);
+    save(); update();
+  });
+  // 엔터 → 아래 칸으로 이동
+  $("tbody").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const m = e.target.id.match(/^s-(\d+)-(\d+)$/);
+    if (!m) return;
+    e.preventDefault();
+    let p = +m[1] + 1, g = +m[2];
+    if (p >= state.players) { p = 0; g++; }
+    const next = $(`s-${p}-${g}`);
+    if (next) { next.focus(); next.select(); }
+  });
+
+  function twoStep(btn, label, action) {
+    let armed = false, timer;
+    btn.addEventListener("click", () => {
+      if (!armed) {
+        armed = true; btn.textContent = "한 번 더 누르면 실행"; btn.classList.add("confirm");
+        timer = setTimeout(() => { armed = false; btn.textContent = label; btn.classList.remove("confirm"); }, 3000);
+        return;
+      }
+      clearTimeout(timer); armed = false; btn.textContent = label; btn.classList.remove("confirm");
+      action();
+    });
+  }
+  twoStep($("clearScores"), "점수 비우기", () => { state.scores = []; state.adjUnits = []; normalize(); save(); buildTable(); });
+  twoStep($("resetAll"), "전체 초기화", () => {
+    state = { players: 8, games: 10, amount: 2000, rule: "half", skipFirst: true, names: [], scores: [], adjUnits: [] };
+    syncControls(); save(); buildTable();
+  });
+
+  $("copyBtn").addEventListener("click", () => {
+    const done = () => { $("toast").hidden = false; setTimeout(() => ($("toast").hidden = true), 1600); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(lastText).then(done).catch(fallback);
+    } else fallback();
+    function fallback() {
+      const ta = document.createElement("textarea");
+      ta.value = lastText; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) {}
+      ta.remove();
+    }
+  });
+
+  // ----- 이름·점수 캡처 -----
+  let capBlob = null, downloadsApi = null;
+  if (window.claude && window.claude.use) {
+    window.claude.use("downloads").then((d) => { downloadsApi = d; }).catch(() => {});
+  }
+
+  async function renderCapture() {
+    try { await document.fonts.ready; } catch (e) {}
+    // 점수가 하나라도 있는 마지막 게임까지만 그린다
+    let lastG = 0;
+    for (let g = 0; g < state.games; g++)
+      for (let p = 0; p < state.players; p++) if (getScore(p, g) !== null) lastG = g;
+    const games = lastG + 1;
+    const C = { bg: "#ffffff", head: "#f6e7d2", ink: "#18202e", muted: "#5d6779", line: "#d6dce7", absent: "#f3f5f9", lane: "#c98a3d" };
+    const sans = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+    const mono = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+    const pad = 28, nameW = 150, colW = 64, rowH = 44, headH = 40, titleH = 64, totW = 104, avgW = 72;
+    const { totals } = compute();
+    const gx = pad + nameW + colW * games;   // 정산·평균 열 시작
+    const W = pad * 2 + nameW + colW * games + totW + avgW;
+    const H = pad * 2 + titleH + headH + rowH * state.players;
+    const C2 = { pos: "#1f7a52", posSoft: "#e2f3ea", neg: "#b8383b", negSoft: "#f8e3e3" };
+    const dpr = 2;
+    const cv = document.createElement("canvas");
+    cv.width = W * dpr; cv.height = H * dpr;
+    const x = cv.getContext("2d");
+    x.scale(dpr, dpr);
+    x.fillStyle = C.bg; x.fillRect(0, 0, W, H);
+
+    const d = new Date();
+    x.fillStyle = C.ink; x.font = `700 22px ${sans}`; x.textBaseline = "alphabetic"; x.textAlign = "left";
+    x.fillText("볼링 점수표", pad, pad + 26);
+    x.fillStyle = C.muted; x.font = `400 13px ${sans}`;
+    x.fillText(`${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} · ${state.players}명 · ${games}게임`, pad, pad + 48);
+
+    const top = pad + titleH;
+    x.fillStyle = C.head; x.fillRect(pad, top, W - pad * 2, headH);
+    x.textBaseline = "middle";
+    x.fillStyle = C.ink; x.font = `700 13px ${sans}`; x.textAlign = "left";
+    x.fillText("이름", pad + 14, top + headH / 2);
+    x.textAlign = "center";
+    for (let g = 0; g < games; g++) {
+      const cx = pad + nameW + colW * g;
+      if (isPractice(g)) { x.fillStyle = C.absent; x.fillRect(cx, top, colW, headH); }
+      x.fillStyle = isPractice(g) ? C.muted : C.ink;
+      x.font = `600 13px ${mono}`;
+      if (isPractice(g)) {
+        x.fillText(`${g + 1}G`, cx + colW / 2, top + 13);
+        x.font = `500 11px ${sans}`;
+        x.fillText("음료수", cx + colW / 2, top + 28);
+      } else x.fillText(`${g + 1}G`, cx + colW / 2, top + headH / 2);
+    }
+    x.fillStyle = C.ink; x.font = `700 13px ${sans}`;
+    x.fillText("정산", gx + totW / 2, top + headH / 2);
+    x.fillText("평균", gx + totW + avgW / 2, top + headH / 2);
+    for (let p = 0; p < state.players; p++) {
+      const y = top + headH + rowH * p;
+      x.textAlign = "left"; x.fillStyle = C.ink; x.font = `500 15px ${sans}`;
+      x.fillText(nameOf(p), pad + 14, y + rowH / 2, nameW - 20);
+      x.textAlign = "center";
+      for (let g = 0; g < games; g++) {
+        const cx = pad + nameW + colW * g, s = getScore(p, g);
+        if (s === null) { x.fillStyle = C.absent; x.fillRect(cx, y, colW, rowH); x.fillStyle = C.muted; x.font = `500 15px ${mono}`; x.fillText("–", cx + colW / 2, y + rowH / 2); continue; }
+        x.fillStyle = isPractice(g) ? C.muted : C.ink; x.font = `500 15px ${mono}`;
+        x.fillText(String(s), cx + colW / 2, y + rowH / 2);
+      }
+      const t = Math.round(totals[p]);
+      if (t) { x.fillStyle = t > 0 ? C2.posSoft : C2.negSoft; x.fillRect(gx, y, totW, rowH); }
+      x.fillStyle = t > 0 ? C2.pos : t < 0 ? C2.neg : C.muted; x.font = `600 14px ${mono}`;
+      x.fillText(fmt(t), gx + totW / 2, y + rowH / 2);
+      let sum = 0, cnt = 0;
+      for (let g = 0; g < state.games; g++) { const v = getScore(p, g); if (v !== null) { sum += v; cnt++; } }
+      x.fillStyle = C.ink; x.font = `500 14px ${mono}`;
+      x.fillText(cnt ? (sum / cnt).toFixed(1) : "–", gx + totW + avgW / 2, y + rowH / 2);
+    }
+    // 격자
+    x.strokeStyle = C.line; x.lineWidth = 1;
+    const bottom = top + headH + rowH * state.players;
+    for (let r = 0; r <= state.players + 1; r++) {
+      const y = r === 0 ? top : top + headH + rowH * (r - 1);
+      x.beginPath(); x.moveTo(pad, y + .5); x.lineTo(W - pad, y + .5); x.stroke();
+    }
+    for (let g = 0; g <= games; g++) {
+      const cx = pad + nameW + colW * g;
+      x.beginPath(); x.moveTo(cx + .5, top); x.lineTo(cx + .5, bottom); x.stroke();
+    }
+    x.beginPath(); x.moveTo(gx + totW + .5, top); x.lineTo(gx + totW + .5, bottom); x.stroke();
+    x.strokeStyle = C.ink; x.beginPath(); x.moveTo(gx + .5, top); x.lineTo(gx + .5, bottom); x.stroke(); x.strokeStyle = C.line;
+    x.strokeRect(pad + .5, top + .5, W - pad * 2 - 1, bottom - top - 1);
+    return new Promise((res) => cv.toBlob(res, "image/png"));
+  }
+
+  function setCapMsg(t) { $("capMsg").textContent = t; }
+  $("captureBtn").addEventListener("click", async () => {
+    capBlob = await renderCapture();
+    if (!capBlob) return;
+    const img = $("capImg");
+    if (img.src) URL.revokeObjectURL(img.src);
+    img.src = URL.createObjectURL(capBlob);
+    setCapMsg("");
+    $("capModal").hidden = false;
+    $("capClose").focus();
+  });
+  const closeCap = () => { $("capModal").hidden = true; $("captureBtn").focus(); };
+  $("capClose").addEventListener("click", closeCap);
+  $("capModal").addEventListener("click", (e) => { if (e.target.id === "capModal") closeCap(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("capModal").hidden) closeCap(); });
+  $("capCopy").addEventListener("click", () => {
+    if (!capBlob || !navigator.clipboard || !window.ClipboardItem) { setCapMsg("이 환경에선 복사가 안 돼요. 이미지를 우클릭해서 복사해 주세요."); return; }
+    navigator.clipboard.write([new ClipboardItem({ "image/png": capBlob })])
+      .then(() => setCapMsg("이미지를 복사했어요. 카톡 등에 붙여넣으면 돼요."))
+      .catch(() => setCapMsg("복사가 막혀 있어요. 이미지를 우클릭해서 복사해 주세요."));
+  });
+  $("capSave").addEventListener("click", async () => {
+    if (!capBlob) return;
+    const d = new Date();
+    const name = `볼링점수_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}.png`;
+    if (!downloadsApi) {
+      // 일반 사이트: 브라우저 다운로드
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(capBlob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      setCapMsg("저장했어요. 폰에서는 이미지를 길게 눌러 사진에 저장할 수도 있어요.");
+      return;
+    }
+    try { await downloadsApi.save({ filename: name, data: capBlob }); setCapMsg("저장했어요."); }
+    catch (err) {
+      const c = err && err.code;
+      if (c === "declined") setCapMsg("저장을 취소했어요.");
+      else if (c === "rate_limited") setCapMsg("저장 창이 이미 열려 있어요. 잠시 후 다시 눌러 주세요.");
+      else { $("capSave").hidden = true; setCapMsg("여기선 저장할 수 없어요. 이미지를 우클릭해서 저장해 주세요."); }
+    }
+  });
+
+  function syncControls() {
+    normalize();
+    $("players").value = state.players; $("games").value = state.games;
+    $("amount").value = state.amount; $("rule").value = state.rule; $("skipFirst").checked = state.skipFirst;
+  }
+  syncControls();
+  buildTable();
+})();
+</script>
+</body>
+</html>
