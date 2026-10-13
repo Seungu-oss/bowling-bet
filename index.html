@@ -168,7 +168,7 @@ td.score.tie input { background: var(--tie-soft); color: var(--tie); font-weight
       <label for="players">인원</label>
       <div class="stepper">
         <button type="button" id="playersMinus" aria-label="인원 줄이기">−</button>
-        <input id="players" type="number" min="2" max="30" value="8">
+        <input id="players" type="number" min="2" max="30" value="3">
         <button type="button" id="playersPlus" aria-label="인원 늘리기">+</button>
       </div>
     </div>
@@ -260,15 +260,8 @@ td.score.tie input { background: var(--tie-soft); color: var(--tie); font-weight
 <script>
 (function () {
   const KEY = "bowling-bet-v1";
-  const SAMPLE = {
-    players: 8, games: 10, amount: 2000, rule: "half", skipFirst: true,
-    names: ["선수1", "선수2", "선수3", "선수4", "선수5", "선수6", "선수7", "선수8"],
-    scores: [
-      [186,204,127,216,190,178,212],[158,173,161,147,153,168,155],[132,182,160,143,150,136,184],
-      [151,152,184,144,187,212,175],[176,181,134,204,178,"",214],[181,164,157,193,129,169,163],
-      [202,140,158,159,118,100,178],[161,161,160,153,134,"",139]
-    ]
-  };
+  // 처음 열었을 때와 '전체 초기화' 후의 기본 상태
+  const DEFAULTS = { players: 3, games: 10, amount: 2000, rule: "half", skipFirst: true, names: [], scores: [], adjUnits: [] };
   const RULES = {
     half: "게임마다 점수 순위 상위 절반은 금액을 받고, 하위 절반은 금액을 내요. 인원이 홀수면 가운데 한 명은 0원이에요.",
     versus: "게임마다 참가자 모두와 1:1로 비교해서, 이긴 사람이 진 사람에게 금액을 받아요. 동점이면 주고받지 않아요.",
@@ -283,7 +276,7 @@ td.score.tie input { background: var(--tie-soft); color: var(--tie); font-weight
       const s = JSON.parse(localStorage.getItem(KEY));
       if (s && Array.isArray(s.names)) return s;
     } catch (e) {}
-    return JSON.parse(JSON.stringify(SAMPLE));
+    return JSON.parse(JSON.stringify(DEFAULTS));
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 
@@ -552,7 +545,7 @@ td.score.tie input { background: var(--tie-soft); color: var(--tie); font-weight
   }
   twoStep($("clearScores"), "점수 비우기", () => { state.scores = []; state.adjUnits = []; normalize(); save(); buildTable(); });
   twoStep($("resetAll"), "전체 초기화", () => {
-    state = { players: 8, games: 10, amount: 2000, rule: "half", skipFirst: true, names: [], scores: [], adjUnits: [] };
+    state = JSON.parse(JSON.stringify(DEFAULTS));
     syncControls(); save(); buildTable();
   });
 
